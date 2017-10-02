@@ -85,7 +85,7 @@ mpeg
 FLICKR["secret"] = configdict.get('secret', '13c314caee8b1f31')
 FLICKR["api_key"] = configdict.get('api_key', '91dfde3ed605f6b8b9d9c38886547dcf')
 
-flickr = flickrapi.FlickrAPI(FLICKR["api_key"], FLICKR["secret"])
+flickr = flickrapi.FlickrAPI(FLICKR["api_key"], FLICKR["secret"], format="xmlnode")
 #flickr.tokenFile = ".flickr"
 #flickr.AUTH = True
 
@@ -93,7 +93,7 @@ def isGood(res):
     """
     Returns True if the response was OK.
     """
-    return not res == "" and res.stat == "ok"
+    return not res == "" and res['stat'] == "ok"
 
 def getResponse(url):
     """
@@ -113,7 +113,7 @@ def reportError(res):
         err = "Error: " + str( res )
     logging.error(err)
     print err
-    
+
 class Uploadr:
 
     def __init__( self ):
@@ -256,10 +256,10 @@ class Uploadr:
 
             picTags = picTags.strip()
             logging.info("Uploading image %s with tags %s", image, picTags)
-            photo = ('photo', image, open(image,'rb').read())
+            #photo = ('photo', image, open(image,'rb').read())
 
 
-            data = flickr.upload(
+            res = flickr.upload(
                 filename=image,
                 tags = str(picTags),
                 format = 'xmlnode',
@@ -268,11 +268,10 @@ class Uploadr:
                 is_friend = str( FLICKR["is_friend"] ),
                 is_family = str( FLICKR["is_family"] ))
             
-            res = dict2Obj(data)
-            print res
             if isGood(res):
+                photoid = str(res.photoid[0].text)
+                #print "photoid: ", photoid
                 logging.debug( "successful.")
-                photoid = str(res.photoid.text)
                 self.logUpload(photoid, folderTag, image)
                 if configdict.get('override_dates', '0') == '1':
                     self.overrideDates(image, photoid, datePosted, dateTaken, dateTakenGranularity)
@@ -430,7 +429,7 @@ def main():
             uploadedNow.append(uploaded)
         if len(uploadedNow) > 0:
             uploadinstance.uploaded.close()
-            tags2set.createSets(uploadedNow, HISTORY_FILE)
+            tags2set.createSets(flickr, uploadedNow, HISTORY_FILE)
             uploadedNow = []
             uploadinstance.uploaded = shelve.open( HISTORY_FILE )
         if uploadinstance.abandonUploads==True:
