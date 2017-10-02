@@ -19,7 +19,6 @@ You may use this code however you see fit in any form whatsoever.
 2009 Peter Kolarov  -  Updated with fixes and new functionality
 """
 
-from hashlib import md5, sha1
 import logging
 import glob
 import mimetools
@@ -36,18 +35,9 @@ from datetime import timedelta, datetime, time, date, tzinfo
 from itertools import groupby
 from os.path import dirname
 import calendar
-import time
-import random
-import daemon
-from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
-from urllib2 import HTTPError
-import hmac
-import base64
-import traceback
-import json
-from copy import deepcopy
 
-import f2flickr.flickr as flickr
+import flickrapi
+
 import f2flickr.tags2set as tags2set
 from f2flickr.configuration import configdict
 from flickr2history import convert_format
@@ -92,79 +82,26 @@ mpeg
 ##
 ##  You shouldn't need to modify anything below here
 ##
-FLICKR["secret" ] = configdict.get('secret', '13c314caee8b1f31')
-FLICKR["api_key" ] = configdict.get('api_key', '91dfde3ed605f6b8b9d9c38886547dcf')
-flickr.API_KEY = FLICKR["api_key" ]
-flickr.API_SECRET = FLICKR["secret" ]
-flickr.tokenFile = ".flickrToken"
-flickr.AUTH = True
+FLICKR["secret"] = configdict.get('secret', '13c314caee8b1f31')
+FLICKR["api_key"] = configdict.get('api_key', '91dfde3ed605f6b8b9d9c38886547dcf')
 
+flickr = flickrapi.FlickrAPI(FLICKR["api_key"], FLICKR["secret"])
+#flickr.tokenFile = ".flickr"
+#flickr.AUTH = True
 
-def dictFromUrl(s):
-    a = s.split("&")
-    data = {}
-    for e in a:
-        (k, v) = e.split("=", 1)
-        #print k, "=", v
-        data[k] = v
-    return data
-
-# https://stackoverflow.com/questions/1305532/convert-python-dict-to-object
-def objFromDict(d):
-    top = type('_struct', (object,), d)
-    seqs = tuple, list, set, frozenset
-    for i, j in d.items():
-        if isinstance(j, dict):
-            setattr(top, i, objFromDict(j))
-        elif isinstance(j, seqs):
-            setattr(top, i, 
-                type(j)(objFromDict(sj) if isinstance(sj, dict) else sj for sj in j))
-        else:
-            setattr(top, i, j)
-    return top()
-    
 def isGood(res):
     """
     Returns True if the response was OK.
     """
     return not res == "" and res.stat == "ok"
 
-def isGood2(res):
-    """
-    Returns True if the response was OK.
-    """
-    return res.getcode() == 200
-
 def getResponse(url):
     """
     Send the url and get a response.  Let errors float up
     """
-    resp = urllib2.urlopen(url)
-    data = flickr.unmarshal(minidom.parse(resp))
+    data = flickr.unmarshal(minidom.parse(urllib2.urlopen(url)))
     # pylint: disable=E1101
     return data.rsp
-
-def getResponseJson(url):
-    """
-    Send the url and get a response.  Let errors float up
-    """
-    resp = urllib2.urlopen(url)
-    body = resp.read()
-    data = None
-    if(body.startswith("jsonFlickrApi(")):
-        print body
-        l = len(body)
-        data = json.loads(body[14:l-1])
-    return objFromDict(data)
-
-def getResponseOAuth(url):
-    """
-    Send the url and get a response.  Let errors float up
-    """
-    resp = urllib2.urlopen(url)
-    resp.body = resp.read()
-    resp.data = dictFromUrl(resp.body)
-    return resp
 
 def reportError(res):
     """
@@ -176,443 +113,12 @@ def reportError(res):
         err = "Error: " + str( res )
     logging.error(err)
     print err
-
-def reportErrorJson(res):
-    """
-    logs the error from the xml result and prints it too
-    """
-    try:
-        err = "Error:", str( str(res.code) + " " + res.message )
-    except AttributeError:
-        err = "Error: " + str( res )
-    logging.error(err)
-    print err
-
-#
-# buildRequest/encodeMultipartFormdata code is from
-# http://www.voidspace.org.uk/atlantibots/pythonutils.html
-#
-def encodeMultipartFormdata(fields, files):
-    """ Encodes fields and files for uploading.
-    fields is a sequence of (name, value) elements for regular form fields - or a dictionary.
-    files is a sequence of (name, filename, value) elements for data to be uploaded as files.
-    Return (contenttype, body) ready for urllib2.Request instance
-    You can optionally pass in a boundary string to use or we'll let mimetools provide one.
-    """
-    boundary = '-----'+mimetools.choose_boundary()+'-----'
-    crlf = '\r\n'
-    L = []
-    if isinstance(fields, dict):
-        fields = fields.items()
-    for (key, value) in fields:
-        L.append('--' + boundary)
-        L.append('Content-Disposition: form-data; name="%s"' % key)
-        L.append('')
-        L.append(value)
-    for (key, filename, value) in files:
-        filetype = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
-        L.append('--' + boundary)
-        L.append('Content-Disposition: form-data; name="%s"; filename="%s"' % (key, filename))
-        L.append('Content-Type: %s' % filetype)
-        L.append('')
-        L.append(value)
-    L.append('--' + boundary + '--')
-    L.append('')
-    body = crlf.join(L)
-    contenttype = 'multipart/form-data; boundary=%s' % boundary
-    return contenttype, body
-
-def buildRequest(theurl, fields, files):
-    """
-    Given the fields to set and the files to encode it returns a fully formed urllib2.Request object.
-    You can optionally pass in additional headers to encode into the opject. (Content-type and Content-length will be overridden if they are set).
-    fields is a sequence of (name, value) elements for regular form fields - or a dictionary.
-    files is a sequence of (name, filename, value) elements for data to be uploaded as files.
-    """
-    contenttype, body = encodeMultipartFormdata(fields, files)
-    txheaders = {}
-    txheaders['Content-type'] = contenttype
-    txheaders['Content-length'] = str(len(body))
-    return urllib2.Request(theurl, body, txheaders)
-
-class APIConstants:
-    baseApi = "https://api.flickr.com/services/" # added "www."
-    baseWww = "https://www.flickr.com/services/" # added "www."
-    rest   = baseApi + "rest/"
-    auth   = baseApi + "auth/"
-    upload = "https://up.flickr.com/services/upload/"
-    reqToken = baseWww + "oauth/request_token"
-    authorize = baseWww + "oauth/authorize"
-    accToken = baseWww + "oauth/access_token"
-
-    oauth_token = "oauth_token"
-    oauth_token_secret = "oauth_token_secret"
-    oauth_verifier = "oauth_verifier"
-    oauth_callback_confirmed = "oauth_callback_confirmed"
-    oauth_signature = "oauth_signature"
-    true = "true"
-    format = "format"
-    formatJson = "json"
     
-    #token = "auth_token"
-    secret = "secret"
-    key = "api_key"
-    #sig = "api_sig"
-    #frob = "frob"
-    
-    perms = "perms"
-    method = "method"
-
-    def __init__( self ):
-        pass
-
-api = APIConstants()
-
-class OAuthHTTPRequestHandler(BaseHTTPRequestHandler):
-
-    pipe = None
-
-    def do_GET(self):
-        #print "handle ", self.path
-        pipe = self.server.pipe
-        if self.path.startswith("/?"):
-            os.write(pipe, self.path[2:])
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write("<html><body><h2>You have successfully authenticated folders2flickr</h2></body></html>")
-
-
-def signCall(data):
-    """
-    Signs args via md5 per Section 8 of
-    http://www.flickr.com/services/api/auth.spec.html
-    """
-    keys = data.keys()
-    keys.sort()
-    args = ""
-    for key in keys:
-        args += (key + data[key])
-
-    tohash = FLICKR[ api.secret ] + api.key + FLICKR[ api.key ] + args
-    return md5(tohash).hexdigest()
-
-
-def urlGen(base, data):
-    """
-    Creates the url from the template
-    base/?key=value...&api_key=key&api_sig=sig
-    """
-    sig = signCall(data)
-    data[api.key] = FLICKR[api.key]
-    data[api.sig] = sig
-    query = '&'.join(key+'='+value for key, value in data.iteritems())
-    return base + "?" + query
-
-def signOAuth(method, baseUrl, data, secret = None):
-    """
-    Signs args via md5 per Section 8 of
-    http://www.flickr.com/services/api/auth.spec.html
-    """
-    keys = data.keys()
-    keys.sort()
-    query = '&'.join(key+'='+urllib2.quote(data[key],'') for key in keys)
-    tohash = method + "&" + urllib2.quote(baseUrl, '') + "&" + urllib2.quote(query, '')
-    
-    if secret == None:
-        secret = FLICKR[ api.oauth_token_secret ]
-    hashKey = FLICKR[api.secret] + "&" + secret
-    #print "baseStr = '" + tohash + "'"
-    #print "hashKey = '" + hashKey + "'"
-
-    return base64.b64encode(hmac.new(hashKey.encode("utf-8"), tohash.encode("utf-8"), sha1).digest())
-
-def reqGenOAuth(method, baseUrl, data, secret = None, authData = {}):
-    authData["oauth_nonce"] = genNonce()
-    authData["oauth_timestamp"] = genTimestamp()
-    authData["oauth_consumer_key"] = FLICKR[api.key]
-    authData["oauth_signature_method"] = "HMAC-SHA1"
-    authData["oauth_version"] = "1.0"
-    if FLICKR[api.oauth_token] != None:
-        authData[api.oauth_token] = FLICKR[api.oauth_token]
-
-    # include user's data and authData in signature
-    data.update(authData)   
-    sig = signOAuth(method, baseUrl, data, secret)
-    #print "oauth_signature = '" + sig + "'"
-    authData[ api.oauth_signature ] = sig 
-    data[ api.oauth_signature ] = authData[ api.oauth_signature ]
-    return data
-
-def urlGenOAuth(baseUrl, data, secret = None):
-    """
-    Creates the url from the template
-    base/?key=value...&api_key=key&api_sig=sig
-    """
-    d2 = deepcopy(data)
-    d2 = reqGenOAuth("GET", baseUrl, d2, secret)
-    query = '&'.join(key+'='+urllib2.quote(value) for key, value in d2.iteritems())
-    return baseUrl + "?" + query
-
-def headerGenOAuth(baseUrl, data, secret = None):
-    """
-    Creates the url from the template
-    base/?key=value...&api_key=key&api_sig=sig
-    """
-    d2 = deepcopy(data)
-    authData = {}
-    d2 = reqGenOAuth("POST", baseUrl, d2, secret, authData)
-    header = ','.join(key+'="'+value+'"' for key, value in authData.iteritems())
-    return "OAuth " + header
-
-def genTimestamp():
-    return str(int(time.time()))
-
-def genNonce():
-    us = datetime.now().microsecond
-    rand = random.random()
-    return md5(str(us) + str(rand)).hexdigest()
-
-
 class Uploadr:
-    token = None
-    httpd = None
-    pipeHttpd = None
-    perms = ""
-    TOKEN_FILE = flickr.tokenFile
 
     def __init__( self ):
-        self.token = self.getCachedToken()
         self.abandonUploads = False
         self.uploaded = {}
-
-    def authenticate( self ):
-        """
-        Authenticate user so we can upload images
-        """
-        #print "Getting new Token"
-        self.getRequestToken()
-        self.getAuthorization()
-        self.getAccessToken()
-        self.cacheToken()
-
-    def startServer( self ):
-        address = ('127.0.0.1', 0)  # allocate transient port
-        self.httpd = HTTPServer(address, OAuthHTTPRequestHandler)
-        pipein, pipeout = os.pipe()
-        pid = os.fork() 
-        if pid > 0:
-            try:
-                self.httpd.pipe = pipeout
-                self.httpd.serve_forever()
-            except KeyboardInterrupt:
-                pass
-            except:
-                print "Exception in HTTP server", str( sys.exc_info() )
-                pass
-            os._exit(0)
-        else:
-            self.pipeHttpd = pipein
-
-    def stopServer( self ):
-        self.httpd.shutdown()
-        self.httpd = None
-
-    def readHttpParams( self ):
-        url = os.read(self.pipeHttpd, 1024)
-        if url != "":
-            #print "Read", url
-            data = dictFromUrl(url)
-            return data
-        else:
-            return None
-
-    def getRequestToken( self ):
-        """
-        flickr.auth.getFrob
-
-        Returns a frob to be used during authentication. This method call must be
-        signed.
-
-        This method does not require authentication.
-        Arguments
-
-        api.key (Required)
-        Your API application key. See here for more details.
-        """
-        
-        self.startServer()
-        FLICKR[ api.oauth_token ] = None
-        address = self.httpd.server_address
-        cbUrl = "http://" + address[0] + ":" + str(address[1])
-        
-        d = {
-            "oauth_callback" : cbUrl
-        }
-        url = urlGenOAuth(api.reqToken, d, '')
-        try:
-            response = getResponseOAuth(url)
-            if isGood2(response):
-                # oauth_callback_confirmed
-                FLICKR[ api.oauth_token ] = str(response.data[api.oauth_token])
-                FLICKR[ api.oauth_token_secret ] = str(response.data[api.oauth_token_secret])
-                return 1
-            else:
-                reportError(response)
-                
-        except HTTPError as e:
-            print "Error getting request token:" , e.code, e.reason, e.read()
-        except:
-            print "Error getting request token:" , str( sys.exc_info() )
-            logging.error(sys.exc_info())
-        # error exit
-        self.stopServer()
-        sys.exit()
-
-    def getAuthorization( self ):
-        """
-        Checks to see if the user has authenticated this application
-        """
-        d =  {
-            api.oauth_token : FLICKR[ api.oauth_token ],
-            api.perms : "write"
-            }
-        query = '&'.join(key+'='+value for key, value in d.iteritems())
-        url = api.authorize + "?" + query
-        ans = ""
-        try:
-            webbrowser.open( url )
-            print "You need to allow this program to access your Flickr site."
-            print "A web browser should pop open with instructions."
-            print "Please authorize this application in the browser then come back here."
-            ans = raw_input("Have you authorized this application? (Y/N): ")
-        except KeyboardInterrupt:
-            print ""
-            self.stopServer()
-            sys.exit()           
-        except:
-            print str(sys.exc_info())
-        if ( ans.lower() == "n" ):
-            print "Cannot proceed without authorization"
-            self.stopServer()
-            sys.exit()
-        else:
-            while 1:
-                try:
-                    data = self.readHttpParams()
-                    if data != None:
-                        break
-                except EOFError:
-                    pass
-                except:
-                    print str(sys.exc_info())
-                    self.stopServer()
-                    sys.exit()
-            FLICKR[ api.oauth_token ] = str(data[api.oauth_token])
-            FLICKR[ api.oauth_verifier ] = str(data[api.oauth_verifier])
-        self.stopServer()
-
-
-    def getAccessToken( self ):
-        """
-        http://www.flickr.com/services/api/flickr.auth.getToken.html
-
-        flickr.auth.getToken
-
-        Returns the auth token for the given frob, if one has been attached. This method call must be signed.
-        Authentication
-
-        This method does not require authentication.
-        Arguments
-
-        NTC: We need to store the token in a file so we can get it and then check it insted of
-        getting a new on all the time.
-
-        api.key (Required)
-           Your API application key. See here for more details.
-        frob (Required)
-           The frob to check.
-        """
-        d = {
-            api.oauth_verifier : FLICKR[ api.oauth_verifier ]
-        }
-        url = urlGenOAuth(api.accToken, d)
-        try:
-            response = getResponseOAuth(url)
-            if isGood2(response):
-                # oauth_callback_confirmed
-                FLICKR[ api.oauth_token ] = str(response.data[api.oauth_token])
-                FLICKR[ api.oauth_token_secret ] = str(response.data[api.oauth_token_secret])
-                self.token = response.body
-            else:
-                reportError(response)
-                sys.exit()
-        except HTTPError as e:
-            print "Error getting access token:" , e.code, e.reason, e.read()
-            sys.exit()
-
-        except:
-            print str( sys.exc_info() )
-            logging.error(sys.exc_info())
-            sys.exit()
-
-    def getCachedToken( self ):
-        """
-        Attempts to get the flickr token from disk.
-        """
-        if ( os.path.exists( self.TOKEN_FILE )):
-            params = open( self.TOKEN_FILE ).read()
-            data = dictFromUrl(params)
-            FLICKR[ api.oauth_token ] = str(data[api.oauth_token])
-            FLICKR[ api.oauth_token_secret ] = str(data[api.oauth_token_secret])
-            print "Read token for", data["username"]
-            return params
-        else :
-            return None
-
-    def cacheToken( self ):
-        try:
-            open( self.TOKEN_FILE , "w").write( str(self.token) )
-        except:
-            print "Issue writing token to local cache " , str(sys.exc_info())
-            logging.error(sys.exc_info())
-
-    def checkToken( self ):
-        """
-        flickr.auth.checkToken
-
-        Returns the credentials attached to an authentication token.
-        Authentication
-
-        This method does not require authentication.
-        Arguments
-
-        api.key (Required)
-            Your API application key. See here for more details.
-        auth_token (Required)
-            The authentication token to check.
-        """
-        if ( self.token == None ):
-            return False
-        d = {
-            api.method :  "flickr.auth.oauth.checkToken",
-            api.format : api.formatJson
-        }
-        url = urlGenOAuth(api.rest, d)
-        print "Url", url
-        try:
-            res = getResponseJson(url)
-            if isGood(res):
-                self.token = str(res.oauth.token._content)
-                self.perms = str(res.oauth.perms._content)
-                return True
-            else :
-                reportErrorJson(res)
-                
-        except:
-            print str( sys.exc_info() )
-            logging.error(sys.exc_info())
-        return False
-
 
     def upload( self, newImages ):
         """
@@ -753,22 +259,17 @@ class Uploadr:
             photo = ('photo', image, open(image,'rb').read())
 
 
-            d = {
-                "tags"      : str(picTags),
-                "hidden"    : str( FLICKR["hidden"] ),
-                "is_public" : str( FLICKR["is_public"] ),
-                "is_friend" : str( FLICKR["is_friend"] ),
-                "is_family" : str( FLICKR["is_family"] )
-            }
-            authHeader = headerGenOAuth(api.upload, d)
-            url = buildRequest(api.upload, d, (photo,))
-            url.add_header("Authorization", authHeader)
+            data = flickr.upload(
+                filename=image,
+                tags = str(picTags),
+                format = 'xmlnode',
+                hidden = str( FLICKR["hidden"] ),
+                is_public = str( FLICKR["is_public"] ),
+                is_friend = str( FLICKR["is_friend"] ),
+                is_family = str( FLICKR["is_family"] ))
             
-            #for h in url.header_items(): 
-            #    print h[0], ":", h[1]
-            #print url.get_data()[:2000]
-            
-            res = getResponse(url)
+            res = dict2Obj(data)
+            print res
             if isGood(res):
                 logging.debug( "successful.")
                 photoid = str(res.photoid.text)
@@ -779,8 +280,6 @@ class Uploadr:
             else :
                 print "problem.."
                 reportError(res)
-        except HTTPError as e:
-            print "Upload failed:" , e.code, e.reason, e.read()
         except KeyboardInterrupt:
             logging.debug("Keyboard interrupt seen, abandon uploads")
             print "Stopping uploads..."
@@ -911,8 +410,8 @@ def main():
     logging.getLogger('').addHandler(console)
 
     uploadinstance = Uploadr()
-    if not uploadinstance.checkToken():
-        uploadinstance.authenticate()
+    if not flickr.token_valid(perms='write'):
+        flickr.authenticate_via_browser(perms='write')
 
     logging.info('Finding new photos from folder %s' % IMAGE_DIR)
     images = grabNewImages(IMAGE_DIR)
