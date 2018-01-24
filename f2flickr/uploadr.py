@@ -256,6 +256,7 @@ class Uploadr:
 
             picTags = picTags.strip()
             logging.info("Uploading image %s with tags %s", image, picTags)
+            print "Uploading image " + image + " with tags " + str(picTags)
             #photo = ('photo', image, open(image,'rb').read())
 
 
@@ -406,15 +407,17 @@ def main():
     console = logging.StreamHandler()
     console.setLevel(logging.INFO)
     console.setFormatter(logging.Formatter('%(asctime)s %(filename)s:%(lineno)s - %(funcName)20s() %(message)s'))
-    logging.getLogger('').addHandler(console)
+    #logging.getLogger('').addHandler(console)
 
     uploadinstance = Uploadr()
     if not flickr.token_valid(perms='write'):
         flickr.authenticate_via_browser(perms='write')
 
     logging.info('Finding new photos from folder %s' % IMAGE_DIR)
+    print "Scanning folder " + IMAGE_DIR
     images = grabNewImages(IMAGE_DIR)
     logging.info('Found %d images' % len(images))
+    print 'Found %d images' % len(images)
 
     # Convert history file to new format, if necessary.
     logging.info('Converting existing history file to new format, if needed')
