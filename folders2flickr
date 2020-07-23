@@ -6,5 +6,5 @@ Command line folders2flickr interface
 try:
     import f2flickr.uploadr
     f2flickr.uploadr.main()
-except IOError, ex:
-    print ex
+except IOError as ex:
+    print(ex)

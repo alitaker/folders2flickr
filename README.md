@@ -1,5 +1,10 @@
 [![Build Status](https://travis-ci.org/richq/folders2flickr.png)](https://travis-ci.org/richq/folders2flickr)
 
+This is a fork of below fork. It uses python module flickrapi to handle OAuth 
+authentication.
+
+## FOREWORD by richq
+
 This is a fork of the seemingly defunct http://code.google.com/p/folders2flickr/ project.
 
 When looking for a good way to upload photos and videos to flickr from the

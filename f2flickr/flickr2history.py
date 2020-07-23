@@ -10,7 +10,6 @@ import logging
 import shelve
 import sys
 import os
-import f2flickr.flickr as flickr
 
 def getPhotoIDbyTag(tag, user):
     """
