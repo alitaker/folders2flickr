@@ -1,7 +1,7 @@
-[![Build Status](https://travis-ci.org/richq/folders2flickr.png)](https://travis-ci.org/richq/folders2flickr)
+## Ported to Python3
+This is a fork of below fork. I included the commits from another fork (https://github.com/altaroca/folders2flickr) to handle OAuth 
+authentication and ported everything to Python3. I also added some fixes.
 
-This is a fork of below fork. It uses python module flickrapi to handle OAuth 
-authentication.
 
 ## FOREWORD by richq
 
