@@ -416,7 +416,23 @@ def main():
 
     uploadinstance = Uploadr()
     if not flickr.token_valid(perms='write'):
-        flickr.authenticate_via_browser(perms='write')
+        
+        #flickr.authenticate_via_browser(perms='write')
+        #flickr.authenticate_console(perms='write')
+
+        flickr.get_request_token(oauth_callback='oob')
+        # Open a browser at the authentication URL. Do this however
+        # you want, as long as the user visits that URL.
+        authorize_url = flickr.auth_url(perms='write')
+        print("Please authorize this App going to the following URL: ", authorize_url)
+        #webbrowser.open_new_tab(authorize_url)
+
+        # Get the verifier code from the user. Do this however you
+        # want, as long as the user gives the application the code.
+        verifier = str(input('Enter verifier code: '))
+
+        # Trade the request token for an access token
+        flickr.get_access_token(verifier)
 
     logging.info('Finding new photos from folder %s' % IMAGE_DIR)
     print ("Scanning folder " + IMAGE_DIR)
