@@ -21,13 +21,15 @@ You may use this code however you see fit in any form whatsoever.
 
 import logging
 import glob
-import mimetools
+#import mimetools
+import email
 import mimetypes
 import os
 import re
 import shelve
 import sys
-import urllib2
+#import urllib2
+import urllib.request
 import webbrowser
 import exifread
 import string
@@ -99,7 +101,8 @@ def getResponse(url):
     """
     Send the url and get a response.  Let errors float up
     """
-    data = flickr.unmarshal(minidom.parse(urllib2.urlopen(url)))
+    #data = flickr.unmarshal(minidom.parse(urllib2.urlopen(url)))
+    data = flickr.unmarshal(minidom.parse(urllib.request.urlopen(url)))
     # pylint: disable=E1101
     return data.rsp
 
@@ -112,7 +115,7 @@ def reportError(res):
     except AttributeError:
         err = "Error: " + str( res )
     logging.error(err)
-    print err
+    print (err)
 
 class Uploadr:
 
@@ -141,7 +144,8 @@ class Uploadr:
         """
         folderTag = image[len(IMAGE_DIR):]
 
-        if self.uploaded.has_key(folderTag):
+        #if self.uploaded.has_key(folderTag):
+        if folderTag in self.uploaded:
             stats=os.stat(image)
             logging.debug('The file %s already exists: mtime=%d, size=%d',
                          image, stats.st_mtime, stats.st_size)
@@ -256,7 +260,7 @@ class Uploadr:
 
             picTags = picTags.strip()
             logging.info("Uploading image %s with tags %s", image, picTags)
-            print "Uploading image " + image + " with tags " + str(picTags)
+            print ("Uploading image " + image + " with tags " + str(picTags))
             #photo = ('photo', image, open(image,'rb').read())
 
 
@@ -278,11 +282,11 @@ class Uploadr:
                     self.overrideDates(image, photoid, datePosted, dateTaken, dateTakenGranularity)
                 return photoid
             else :
-                print "problem.."
+                print ("problem..")
                 reportError(res)
         except KeyboardInterrupt:
             logging.debug("Keyboard interrupt seen, abandon uploads")
-            print "Stopping uploads..."
+            print ("Stopping uploads...")
             self.abandonUploads = True
             return None
         except:
@@ -332,11 +336,11 @@ class Uploadr:
                 logging.debug( "date setting successful.")
                 return
             else :
-                print "problem.."
+                print ("problem..")
                 reportError(res)
         except KeyboardInterrupt:
             logging.debug("Keyboard interrupt seen, abandon uploads")
-            print "Stopping uploads..."
+            print ("Stopping uploads...")
 
 
 def parseIgnore(contents):
@@ -375,7 +379,8 @@ def grabNewImages(dirname):
 
         # build the ignore list from this dir parents ignore files
         ignoreglobs = []
-        for path, lines in treeIgnore.iteritems():
+#        for path, lines in treeIgnore.iteritems():
+        for path, lines in treeIgnore.items():
             if path in dirpath:
                 ignoreglobs += lines
 
@@ -414,10 +419,10 @@ def main():
         flickr.authenticate_via_browser(perms='write')
 
     logging.info('Finding new photos from folder %s' % IMAGE_DIR)
-    print "Scanning folder " + IMAGE_DIR
+    print ("Scanning folder " + IMAGE_DIR)
     images = grabNewImages(IMAGE_DIR)
     logging.info('Found %d images' % len(images))
-    print 'Found %d images' % len(images)
+    print ('Found %d images' % len(images))
 
     # Convert history file to new format, if necessary.
     logging.info('Converting existing history file to new format, if needed')

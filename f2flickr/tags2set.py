@@ -49,7 +49,10 @@ def _creatSet(flickr, photoSet, setName, existingSets):
     if not setName:
         return fset
     
-    unicodeSetName = setName.decode(sys.getfilesystemencoding())
+    #unicodeSetName = setName.decode(sys.getfilesystemencoding())
+	#Python3 does not need to decode
+    unicodeSetName = setName
+    #print ("Not decoding: ", unicodeSetName)
     #check if set with the name exists already
     generate = 'Generating'
     for existingSet in existingSets:
@@ -60,7 +63,7 @@ def _creatSet(flickr, photoSet, setName, existingSets):
             break
     msg = "%s set %s with %d pictures" % (generate, setName, len(photoSet))
     logging.debug(msg)
-    print msg
+    print (msg)
     try:
         if(fset == None):
             logging.debug("tags2set: create set %s with photo %s",
@@ -69,7 +72,7 @@ def _creatSet(flickr, photoSet, setName, existingSets):
                 primary_photo_id=photos[0], title=setName, description=SET_DESC)
             fset = resp.photoset[0]
             logging.debug('tags2set: created new set %s', setName)
-    except Exception, ex:
+    except Exception as ex:
         logging.error('tags2set: Cannot create set "%s"', setName)
         logging.error(str(ex))
         logging.error(sys.exc_info()[0])
@@ -82,7 +85,7 @@ def _creatSet(flickr, photoSet, setName, existingSets):
         flickr.photosets.editPhotos(
             photoset_id = fset['id'], primary_photo_id=photos[0], 
             photo_ids=','.join([str(photo) for photo in photos]))
-    except Exception, ex:
+    except Exception as ex:
         logging.error('tags2set: Cannot edit set %s', setName)
         logging.error(str(ex))
         logging.error(str(sys.exc_info()))
@@ -119,8 +122,9 @@ def createSets(flickr, uploadedNow, historyFile):
         return None
 
     uploaded = shelve.open( historyFile )
-    keys = uploaded.keys()
-    keys.sort()
+    #keys = uploaded.keys()
+    #keys.sort()
+    keys = sorted(uploaded.keys())
     uploadedSets = set()
     for uploadedid in uploadedNow:
         try:

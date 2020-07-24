@@ -1,6 +1,7 @@
 """configuration: Read the global or relative uploadr.ini file."""
 import os
-from ConfigParser import ConfigParser
+#from ConfigParser import ConfigParser
+from configparser import ConfigParser
 
 __copyright__ = "(C) 2014 Richard Quirk. GNU GPL v2 or later."
 
@@ -12,7 +13,7 @@ class ConfigDict:
         paths = (os.path.abspath('uploadr.ini'), os.path.expanduser('~/.uploadr.ini'))
         for filename in paths:
             if os.path.exists(filename):
-                print 'using uploadr.ini file "%s"' % os.path.abspath(filename)
+                print ('using uploadr.ini file "%s"' % os.path.abspath(filename))
                 self.configdict.read(filename)
                 foundini = True
                 break

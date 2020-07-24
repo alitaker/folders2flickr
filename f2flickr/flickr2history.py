@@ -74,7 +74,8 @@ def convert_format(images, imageDir, historyFile):
         full_image_path=image
         # remove absolute directory
         image = str(image[len(imageDir):])
-        if uploaded.has_key(image):
+        #if uploaded.has_key(image):
+        if image in uploaded:
             if isinstance(uploaded[image], tuple):
                 num_ok += 1
                 continue
@@ -124,7 +125,8 @@ def reshelf(images,  imageDir, historyFile):
         image = image[len(imageDir):]
         # its better to always reopen this file
         uploaded = shelve.open( historyFile )
-        if uploaded.has_key(str(image)):
+        #if uploaded.has_key(str(image)):
+        if image in uploaded:
             if isinstance(uploaded[str(image)], tuple):
                 uploaded.close()
                 continue
