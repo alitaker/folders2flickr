@@ -202,10 +202,10 @@ class Uploadr:
                 dateTakenGranularity = configdict.get('date_taken_granularity', '0')
                 #fixed take date
                 if configdict.get('date_taken_type', '0') == '2':
-                    datePosted = configdict.get('date_posted_fixed', '')
+                    dateTaken = configdict.get('date_taken_fixed', '')
                 #fixed post date
                 if configdict.get('date_posted_type', '0') == '2':
-                    datePosted = configdict.get('date_posted_fixed', '')
+                    datePosted = int(configdict.get('date_posted_fixed', ''))
                     #Use year and month from config ini, then calculate end of month (note: Flickr does not accept future dates. You'll get current date maximum)
                     if configdict.get('date_posted_granularity', '0') == '4':
                         datePostedY = int(datetime.fromtimestamp(datePosted).strftime("%Y"))
@@ -279,7 +279,11 @@ class Uploadr:
                 logging.debug( "successful.")
                 self.logUpload(photoid, folderTag, image)
                 if configdict.get('override_dates', '0') == '1':
-                    self.overrideDates(image, photoid, datePosted, dateTaken, dateTakenGranularity)
+                    if (dateTaken != '' or datePosted != ''):
+                        self.overrideDates(image, photoid, datePosted, dateTaken, dateTakenGranularity)
+                    else:
+                        logging.debug( "skip overrideDates because they are empty")
+                        
                 return photoid
             else :
                 print ("problem..")
@@ -319,22 +323,9 @@ class Uploadr:
         try:
             photoID = str( photoID )
             logging.debug("Setting date_posted: %s and date_taken: %s for %s with id %s", str( datePosted ), str( dateTaken ), image, photoID)
-            d = {
-                api.token   : str(self.token),
-                api.method  : "flickr.photos.setDates",
-                "date_posted": str( datePosted ),
-                "date_taken": str( dateTaken ),
-                "date_taken_granularity" : str( granularity ),
-                "photo_id"  : photoID,
-            }
-            sig = signCall(d)
-            d[ api.sig ] = sig
-            d[ api.key ] = FLICKR[ api.key ]
-            url = buildRequest(api.rest, d, ())
-            res = getResponse(url)
+            res = flickr.photos_setDates(photo_id=photoID, date_posted=str( datePosted ), date_taken=str( dateTaken ), date_taken_granularity=str( granularity ))
             if isGood(res):
                 logging.debug( "date setting successful.")
-                return
             else :
                 print ("problem..")
                 reportError(res)
